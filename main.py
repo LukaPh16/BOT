@@ -3,17 +3,17 @@ import whisper
 import pyaudio
 import numpy as np
 import audioop
-import time
 
-model = whisper.load_model("base", device = "cuda")  # remove cuda unless confirmed working
+model = whisper.load_model("base", device="cuda")
 
-RATE = 48000
+RATE = 48000 #mic
 TARGET_RATE = 16000
-CHUNK_SIZE = 1024  # small = real-time
+CHUNK_SIZE = 1024
 
 DEVICE_INDEX = 4 #mic
-MIN_VOLUME = 65  # dB threshold (adjust later)
-DELAY = 1.5
+MIN_VOLUME = 65 
+SILENCE_THRESHOLD= 60
+SILENCE_LIMIT = 20
 
 p = pyaudio.PyAudio()
 
@@ -31,29 +31,51 @@ print("Listening...")
 def get_db(block):
     data = np.frombuffer(block, dtype=np.int16).astype(np.float32)
     rms = np.sqrt(np.mean(data**2))
-
-    if rms > 0:
-        db = 20 * np.log10(rms)
-    else:
-        db = -100  # silence
-
-    return db
+    return 20 * np.log10(rms) if rms > 0 else -100
 
 
-def db():
+def main():
     while True:
         data = stream.read(CHUNK_SIZE, exception_on_overflow=False)
 
         db = get_db(data)
-        print(f"Volume: {db:.2f} dB    ", end="\r")
+        print(f"Volume: {db:6.2f} dB   ", end="\r", flush=True)
 
         if db > MIN_VOLUME:
-            print("Speaking detected!", end="\r")
-            time.sleep(DELAY)
+            print("\n🎤 Speaking detected...")
+
+            frames = []
+
+            while True:
+                chunk = stream.read(CHUNK_SIZE, exception_on_overflow=False)
+                frames.append(chunk)
+
+                db = get_db(chunk)
+
+                if db < SILENCE_THRESHOLD:
+                    silence_count += 1
+
+                else:
+                    silence_count = 0
+
+                if silence_count > SILENCE_LIMIT:
+                    break
+
+            print("Processing...")
+
+            audio_data = b"".join(frames)
+
+            #Convert 48KHz to 16KHz
+            data_16k, _ = audioop.ratecv(audio_data, 2, 1, RATE, TARGET_RATE, None)
+
+            audio_np = np.frombuffer(data_16k, np.int16).astype(np.float32) / 32768.0
+
+            result = model.transcribe(audio_np, language="en")
+
+            print("You said:", result["text"])
 
 
 try:
-    db()
-
+    main()
 except KeyboardInterrupt:
     sys.exit(0)
