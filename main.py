@@ -3,6 +3,7 @@ import whisper
 import pyaudio
 import numpy as np
 import audioop
+import subprocess
 
 model = whisper.load_model("base", device="cuda")
 
@@ -14,6 +15,8 @@ DEVICE_INDEX = 4 #mic
 MIN_VOLUME = 65 
 SILENCE_THRESHOLD= 60
 SILENCE_LIMIT = 20
+
+TTS_MODEL = "en_US-hfc_female-medium.onnx"
 
 p = pyaudio.PyAudio()
 
@@ -33,6 +36,20 @@ def get_db(block):
     rms = np.sqrt(np.mean(data**2))
     return 20 * np.log10(rms) if rms > 0 else -100
 
+def speak(text):
+    #generate wav file
+    subprocess.run(
+        [
+            "piper",
+            "--model", TTS_MODEL,
+            "--output_file", "out.wav"
+        ],
+        input=text.encode()
+    )
+
+    #play wav file
+    subprocess.run(["aplay", "out.wav"])
+
 
 def main():
     while True:
@@ -45,6 +62,7 @@ def main():
             print("\n🎤 Speaking detected...")
 
             frames = []
+            silence_count = 0
 
             while True:
                 chunk = stream.read(CHUNK_SIZE, exception_on_overflow=False)
@@ -73,6 +91,10 @@ def main():
             result = model.transcribe(audio_np, language="en")
 
             print("You said:", result["text"])
+
+            speak(result["text"])
+
+        
 
 
 try:
