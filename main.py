@@ -41,8 +41,11 @@ time.sleep(2)
 
 print("Connected to Arduino")
 
-NAME = "PINKIE" #Still have to think about the name
+NAME = "FRIDAY" #Still have to think about the name
 CALLNAME = "SIR"
+
+WAKEWORD = "friday"
+
 
 RATE = 48000 #mic
 TARGET_RATE = 16000
@@ -216,8 +219,9 @@ def tell_time(text):
 
 def main():
     global examples
+    global assistant_awake
 
-    set_mode("IDLE")
+    set_mode("SLEEP")
 
     while True:
         data = stream.read(CHUNK_SIZE, exception_on_overflow=False)
@@ -257,7 +261,31 @@ def main():
             audio_np = np.frombuffer(data_16k, np.int16).astype(np.float32) / 32768.0
 
             result = model.transcribe(audio_np, language="en")
-            user_input = result["text"].strip()
+            user_input = result["text"].strip().lower()
+
+            if not assistant_awake:
+                if WAKEWORD in user_input:
+                    assistant_awake = True
+
+                    print(f"{NAME}: Yes, {CALLNAME}?")
+                    set_mode("TALK")
+                    tts.speak(f"Yes, {CALLNAME}?")
+                    set_mode("LISTEN")
+
+                else:
+                    set_mode("IDLE")
+
+                continue
+                
+            if "sleep" in user_input or "be quiet" in user_input:
+                assistant_awake = False
+
+                print(f"{NAME}: Going to sleep, {CALLNAME}.")
+                set_mode("TALK")
+                tts.speak(f"Going to sleep {CALLNAME}.")
+                set_mode("SLEEP")
+
+                continue
 
             print("You said:", user_input)
 
@@ -275,21 +303,24 @@ def main():
                 set_mode("IDLE")
                 continue
 
-            reply = tell_time(user_input)
+            if assistant_awake:
+                reply = tell_time(user_input)
+                
+                if reply is None:
+                    set_mode("THINK")
+                    reply = ask_ai(user_input)
 
-            if reply is None:
-                reply = ask_ai(user_input)
+                print(f"{NAME}: {reply}")
 
+                set_mode("TALK")
+                tts.speak(reply)
+
+                set_mode("IDLE")
 
             if reply and len(reply) < 200 and tell_time(user_input) is None:
                 examples.append(f"User: {user_input}\nAI: {reply}")
                 examples = examples[-50:]
                 save_examples()
-
-            set_mode("TALK")
-            tts.speak(reply)
-
-            set_mode("IDLE")
 
 load_examples()
 
@@ -297,6 +328,7 @@ identity = f"User: what is your name\nAI: I am {NAME}, your assistant, {CALLNAME
 
 if identity not in examples:
     examples.insert(0, identity)
+
 
 try:
     main()
