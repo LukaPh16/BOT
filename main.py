@@ -57,12 +57,19 @@ SILENCE_THRESHOLD= 60
 SILENCE_LIMIT = 20
 
 assistant_awake = False
+tts_stop_event = Event()
+tts_playing = False
+tts_lock = threading.Lock()
 
 examples = [
     "User: Hello\nAI: Hello, sir.",
+    "User: Who are you\nAI: I am Friday",
     "User: who are you\nAI: I am your personal assistant, sir.",
     "User: what is your purpose\nAI: To assist you efficiently, sir."
+    "User: are you here\nAI: Yes, I am here, sir"
 ]
+
+MEMORY_FILE = "memory.json"
 
 
 p = pyaudio.PyAudio()
@@ -127,9 +134,20 @@ class TTSEngine:
 
                 data, fs = sf.read(buffer) #load from memory
                 
-                sd.play(data, fs) #play audio
-                sd.wait()
-            
+                global tts_playing
+
+                tts_playing = True
+                sd.play(data, fs)
+
+                while sd.get_stream().active:
+                    if tts_stop_event.is_set():
+                        sd.stop()
+                        tts_stop_event.clear()
+                        break
+                    time.sleep(0.01)
+                
+                tts_playing = False
+
             except Exception as e:
                 print("TTS error:", e)
 
@@ -180,19 +198,6 @@ def ask_ai(prompt):
     print(f"{NAME}: ", reply)
     return reply
 
-def save_examples():
-    with open("personality.json", "w") as f:
-        json.dump(examples, f)
-
-def load_examples():
-    global examples
-    try:
-        with open("personality.json", "r") as f:
-            examples = json.load()
-    
-    except:
-        pass
-
 def send(command):
     arduino.write((command + "\n").encode())
 
@@ -217,10 +222,57 @@ def tell_time(text):
 
     return None
 
+def load_memory():
+    try:
+        with open(MEMORY_FILE, "r") as f:
+            return json.load(f)
+    
+    except:
+        return {}
+
+def save_memory(memory):
+    with open(MEMORY_FILE, "w") as f:
+        json.dump(memory, f, indent=4)
+
+def remember_fact(text):
+    memory = load_memory()
+
+    text = text.lower()
+
+    match = re.search(r"remember[,]? (.+?) is (.+)", text)
+
+    if match:
+        key = match.group(1)
+        value = match.group(2)
+
+        memory[key] = value
+        save_memory(memory)
+
+        return f"Remembered, {CALLNAME}."
+    
+    return None
+
+def recall_fact(text):
+    memory = load_memory()
+
+    text = text.lower()
+
+    match = re.search(r"recall (.+).", text)
+
+    if match:
+        key = match.group(1)
+
+        if key in memory:
+            return memory[key]
+        
+        else:
+            return "Not found."
+
+    return None
+
 def main():
     global examples
     global assistant_awake
-
     set_mode("SLEEP")
 
     while True:
@@ -228,9 +280,13 @@ def main():
 
         db = get_db(data)
         print(f"Volume: {db:6.2f} dB   ", end="\r", flush=True)
-
+        
         if db > MIN_VOLUME:
-            set_mode("LISTEN")
+            if assistant_awake == True:
+                set_mode("LISTEN")
+
+            else:
+                set_mode("SLEEP")
             print("\nSpeaking detected...")
 
             frames = []
@@ -251,7 +307,12 @@ def main():
                     break
 
             print("Processing...")
-            set_mode("THINK")
+
+            if assistant_awake == True:
+                set_mode("THINK")
+
+            else:
+                set_mode("SLEEP")
 
             audio_data = b"".join(frames)
 
@@ -261,10 +322,10 @@ def main():
             audio_np = np.frombuffer(data_16k, np.int16).astype(np.float32) / 32768.0
 
             result = model.transcribe(audio_np, language="en")
-            user_input = result["text"].strip().lower()
+            user_input = result["text"].strip()
 
             if not assistant_awake:
-                if WAKEWORD in user_input:
+                if WAKEWORD in user_input.lower():
                     assistant_awake = True
 
                     print(f"{NAME}: Yes, {CALLNAME}?")
@@ -273,11 +334,11 @@ def main():
                     set_mode("LISTEN")
 
                 else:
-                    set_mode("IDLE")
+                    set_mode("SLEEP")
 
                 continue
                 
-            if "sleep" in user_input or "be quiet" in user_input:
+            if "sleep" in user_input.lower() or "be quiet" in user_input.lower():
                 assistant_awake = False
 
                 print(f"{NAME}: Going to sleep, {CALLNAME}.")
@@ -304,31 +365,24 @@ def main():
                 continue
 
             if assistant_awake:
-                reply = tell_time(user_input)
+                reply = remember_fact(user_input)
+
+                if reply is None:
+                    reply = recall_fact(user_input)
+
+                if reply is None:
+                    reply = tell_time(user_input)
                 
                 if reply is None:
                     set_mode("THINK")
                     reply = ask_ai(user_input)
-
-                print(f"{NAME}: {reply}")
 
                 set_mode("TALK")
                 tts.speak(reply)
 
                 set_mode("IDLE")
 
-            if reply and len(reply) < 200 and tell_time(user_input) is None:
-                examples.append(f"User: {user_input}\nAI: {reply}")
-                examples = examples[-50:]
-                save_examples()
-
-load_examples()
-
-identity = f"User: what is your name\nAI: I am {NAME}, your assistant, {CALLNAME}"
-
-if identity not in examples:
-    examples.insert(0, identity)
-
+        
 
 try:
     main()
