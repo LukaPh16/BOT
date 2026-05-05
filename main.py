@@ -24,6 +24,10 @@ import serial
 
 import os
 
+import requests
+
+LAPTOP_IP = "192.168.0.101"
+
 model = whisper.load_model("base", device="cuda")
 
 TTS_MODEL = "en_US-hfc_female-medium.onnx"
@@ -270,6 +274,17 @@ def recall_fact(text):
 
     return None
 
+def send_laptop_command(command):
+    try:
+        requests.post(
+            f"http://{LAPTOP_IP}:5000/command",
+            json={"cmd": command},
+            timeout=2
+        )
+    
+    except Exception as e:
+        print("Laptop error:", e)
+
 def main():
     global examples
     global assistant_awake
@@ -372,6 +387,15 @@ def main():
 
                 if reply is None:
                     reply = tell_time(user_input)
+
+                if reply is None:
+                    match = re.search(r"open (.+)", user_input.lower())
+
+                    if match:
+                        app = match.group(1).strip().rstrip(".!?")
+
+                        send_laptop_command(f"open {app}")
+                        reply = f"Opening {app} on your laptop, {CALLNAME}"
                 
                 if reply is None:
                     set_mode("THINK")
