@@ -26,7 +26,9 @@ import os
 
 import requests
 
-LAPTOP_IP = "192.168.0.101"
+from camera import start_face_detection
+
+LAPTOP_IP = "192.168.0.103"
 
 model = whisper.load_model("base", device="cuda")
 
@@ -379,6 +381,10 @@ def main():
                 set_mode("IDLE")
                 continue
 
+            if user_input.lower() == "start face detection.":
+                start_face_detection()
+                continue
+
             if assistant_awake:
                 reply = remember_fact(user_input)
 
@@ -400,6 +406,7 @@ def main():
                 if reply is None:
                     set_mode("THINK")
                     reply = ask_ai(user_input)
+
 
                 set_mode("TALK")
                 tts.speak(reply)
