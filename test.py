@@ -9,12 +9,28 @@
 
 # print(response['message']['content'])
 
-import cv2
+# import cv2
 
-cap = cv2.VideoCapture(1, cv2.CAP_V4L2)
+# cap = cv2.VideoCapture(1, cv2.CAP_V4L2)
 
-print("Opened", cap.isOpened())
+# print("Opened", cap.isOpened())
 
-ret, frame = cap.read()
+# ret, frame = cap.read()
 
-print("frame", ret)
+# print("frame", ret)
+
+import pyaudio
+
+p = pyaudio.PyAudio()
+
+print("Available audio devices:")
+
+for i in range(p.get_device_count()):
+    info = p.get_device_info_by_index(i)
+    print(
+        i,
+        "|",
+        info["name"],
+        "| inputs:",
+        info["maxInputChannels"]
+    )
