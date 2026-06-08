@@ -382,7 +382,7 @@ def main():
                 set_mode("IDLE")
                 continue
 
-            if user_input.lower() == "start face detection.":
+            if user_input.lower() == "face detection.":
                 start_face_detection()
                 continue
 
