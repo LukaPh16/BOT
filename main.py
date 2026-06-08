@@ -28,7 +28,7 @@ import requests
 
 from camera import start_face_detection
 
-LAPTOP_IP = "10.26.25.44"
+LAPTOP_IP = "10.247.248.44"
 
 model = whisper.load_model("base", device="cuda")
 
@@ -39,36 +39,33 @@ OLLAMA_MODEL = "qwen2.5:0.5b"
 
 voice = PiperVoice.load(TTS_MODEL, config_path=TTS_CONFIG)
 
-ARDUINO_PORT = "/dev/ttyACM0"
+ARDUINO_PORT = "/dev/ttyACM0" #1
 ARDUINO_BAUD = 115200
 
-arduino = serial.Serial(ARDUINO_PORT, ARDUINO_BAUD, timeout=1)
+arduino = serial.Serial(ARDUINO_PORT, ARDUINO_BAUD, timeout = 1)
 time.sleep(2)
 
 print("Connected to Arduino")
 
-NAME = "FRIDAY"
+NAME = "FRIDAY" #Still have to think about the name
 CALLNAME = "SIR"
 
 WAKEWORD = "friday"
 
-RATE = 48000
+
+RATE = 48000 #mic
 TARGET_RATE = 16000
 CHUNK_SIZE = 1024
 
-DEVICE_INDEX = 4
-MIN_VOLUME = 65
-SILENCE_THRESHOLD = 60
+DEVICE_INDEX = 5 #mic / 4 / 24
+MIN_VOLUME = 65 
+SILENCE_THRESHOLD= 60
 SILENCE_LIMIT = 20
 
 assistant_awake = False
 tts_stop_event = Event()
 tts_playing = False
 tts_lock = threading.Lock()
-
-# --- NEW: stream lock and interrupt flag ---
-stream_lock = threading.Lock()
-was_interrupted = False
 
 examples = [
     "User: Hello\nAI: Hello, sir.",
@@ -80,6 +77,7 @@ examples = [
 
 MEMORY_FILE = "memory.json"
 CONTACTS_FILE = "contacts.json"
+
 
 p = pyaudio.PyAudio()
 
@@ -94,55 +92,55 @@ stream = p.open(
 
 print("Listening...")
 
-
 def warmup_ollama():
     print("Warming up Ollama...")
+    
     ollama.chat(
         model=OLLAMA_MODEL,
         messages=[{"role": "user", "content": "hi"}],
-        options={"num_predict": 1}
+        options = {"num_predict": 1}
     )
-    print("Ollama ready!")
 
+    print("Ollama ready!")
 
 warmup_ollama()
 os.environ["OLLAMA_KEEP_ALIVE"] = "30m"
-
 
 def get_db(block):
     data = np.frombuffer(block, dtype=np.int16).astype(np.float32)
     rms = np.sqrt(np.mean(data**2))
     return 20 * np.log10(rms) if rms > 0 else -100
-
-
+    
 class TTSEngine:
     def __init__(self, voice):
-        self.voice = voice
-        self.queue = Queue()
-        self.running = True
-        self.thread = Thread(target=self.worker, daemon=True)
-        self.thread.start()
+        self.voice = voice #store voice model
+        self.queue = Queue() #message buffer
+        self.running = True #running flag
+        self.thread = Thread(target=self.worker, daemon=True) #background thread
+        self.thread.start() #start thread
 
     def speak(self, text):
         if not text:
             return
-        done = Event()
+        
+        done = Event() #pausing until speech is done
         self.queue.put((text, done))
         done.wait()
 
     def worker(self):
         while self.running:
-            text, done = self.queue.get()
+            text, done = self.queue.get() #sleeping until someone talks
 
             try:
-                buffer = io.BytesIO()
+                buffer = io.BytesIO() #virtual file in RAM
 
-                with wave.open(buffer, "wb") as f:
+                with wave.open(buffer, "wb") as f: #generate audio into memory
                     self.voice.synthesize_wav(text, f)
 
-                buffer.seek(0)
-                data, fs = sf.read(buffer)
+                buffer.seek(0) #reset buffer position
 
+                data, fs = sf.read(buffer) #load from memory
+                
                 global tts_playing
 
                 tts_playing = True
@@ -154,7 +152,7 @@ class TTSEngine:
                         tts_stop_event.clear()
                         break
                     time.sleep(0.01)
-
+                
                 tts_playing = False
 
             except Exception as e:
@@ -163,47 +161,23 @@ class TTSEngine:
             done.set()
             self.queue.task_done()
 
-
 tts = TTSEngine(voice)
-
-
-# --- NEW: background interrupt listener ---
-def interrupt_listener():
-    """Runs in background. If voice is detected while TTS is playing, stop it."""
-    global was_interrupted
-
-    while True:
-        try:
-            with stream_lock:
-                data = stream.read(CHUNK_SIZE, exception_on_overflow=False)
-
-            db = get_db(data)
-
-            if tts_playing and db > MIN_VOLUME:
-                print("\n[Interrupted by user]")
-                was_interrupted = True
-                tts_stop_event.set()
-                time.sleep(0.5)  # debounce to avoid re-triggering
-
-        except Exception as e:
-            print("Interrupt listener error:", e)
-            time.sleep(0.1)
-
 
 def enforce_callname(text):
     if CALLNAME.lower() not in text.lower():
         text = text.strip()
+
         if text.endswith((".", "!", "?")):
             text = text[:-1] + f", {CALLNAME}."
+        
         else:
             text += f", {CALLNAME}"
+    
     return text
 
-
-def limit_sentences(text, max_sentences=2):
+def limit_sentences(text, max_sentences = 2):
     sentences = re.split(r'(?<=[.!?]) +', text)
     return " ".join(sentences[:max_sentences])
-
 
 def ask_ai(prompt):
     example_text = "\n".join(examples[-10:])
@@ -217,10 +191,10 @@ def ask_ai(prompt):
     )
 
     response = ollama.chat(
-        model=OLLAMA_MODEL,
-        messages=[{"role": "user", "content": full_prompt}],
-        options={
-            "num_predict": 30,
+        model = OLLAMA_MODEL,
+        messages = [{"role": "user", "content": full_prompt}],
+        options = {
+            "num_predict": 30, #reply size
             "temperature": 0.3
         }
     )
@@ -231,14 +205,11 @@ def ask_ai(prompt):
     print(f"{NAME}: ", reply)
     return reply
 
-
 def send(command):
     arduino.write((command + "\n").encode())
 
-
 def set_mode(mode):
-    send(mode)
-
+    send(mode)        
 
 def tell_time(text):
     text = text.lower()
@@ -246,58 +217,65 @@ def tell_time(text):
 
     if " time " in text:
         return now.strftime(f"The time is %H:%M, {CALLNAME}")
+
     if " date " in text:
         return now.strftime(f"Today is %B %d, {CALLNAME}")
+    
     if " year " in text:
         return now.strftime(f"It is %Y, {CALLNAME}")
+    
     if " day " in text:
         return now.strftime(f"Today is %A, {CALLNAME}")
 
     return None
 
-
 def load_memory():
     try:
         with open(MEMORY_FILE, "r") as f:
             return json.load(f)
+    
     except:
         return {}
-
 
 def save_memory(memory):
     with open(MEMORY_FILE, "w") as f:
         json.dump(memory, f, indent=4)
 
-
 def remember_fact(text):
     memory = load_memory()
+
     text = text.lower()
+
     match = re.search(r"remember[,]? (.+?) is (.+)", text)
 
     if match:
         key = match.group(1)
         value = match.group(2)
+
         memory[key] = value
         save_memory(memory)
+
         return f"Remembered, {CALLNAME}."
-
+    
     return None
-
 
 def recall_fact(text):
     memory = load_memory()
+
     text = text.lower()
+
     match = re.search(r"recall (.+).", text)
 
     if match:
         key = match.group(1)
+
         if key in memory:
             return memory[key]
+        
         else:
             return "Not found."
 
     return None
-
 
 def send_laptop_command(command):
     try:
@@ -306,42 +284,36 @@ def send_laptop_command(command):
             json={"cmd": command},
             timeout=2
         )
+    
     except Exception as e:
         print("Laptop error:", e)
 
-
 def main():
-    global examples, assistant_awake, was_interrupted
-
+    global examples
+    global assistant_awake
     set_mode("SLEEP")
 
-    # --- NEW: start interrupt listener thread ---
-    interrupt_thread = Thread(target=interrupt_listener, daemon=True)
-    interrupt_thread.start()
-
     while True:
-        with stream_lock:
-            data = stream.read(CHUNK_SIZE, exception_on_overflow=False)
+        data = stream.read(CHUNK_SIZE, exception_on_overflow=False)
 
         db = get_db(data)
         print(f"Volume: {db:6.2f} dB   ", end="\r", flush=True)
-
+        
         if db > MIN_VOLUME:
-            if assistant_awake:
+            if assistant_awake == True:
                 set_mode("LISTEN")
+
             else:
                 set_mode("SLEEP")
-
             print("\nSpeaking detected...")
 
             frames = []
             silence_count = 0
 
             while True:
-                with stream_lock:
-                    chunk = stream.read(CHUNK_SIZE, exception_on_overflow=False)
-
+                chunk = stream.read(CHUNK_SIZE, exception_on_overflow=False)
                 frames.append(chunk)
+
                 db = get_db(chunk)
 
                 if db < SILENCE_THRESHOLD:
@@ -354,8 +326,9 @@ def main():
 
             print("Processing...")
 
-            if assistant_awake:
+            if assistant_awake == True:
                 set_mode("THINK")
+
             else:
                 set_mode("SLEEP")
 
@@ -363,6 +336,7 @@ def main():
 
             # Convert 48kHz → 16kHz
             data_16k, _ = audioop.ratecv(audio_data, 2, 1, RATE, TARGET_RATE, None)
+
             audio_np = np.frombuffer(data_16k, np.int16).astype(np.float32) / 32768.0
 
             result = model.transcribe(audio_np, language="en")
@@ -371,20 +345,25 @@ def main():
             if not assistant_awake:
                 if WAKEWORD in user_input.lower():
                     assistant_awake = True
+
                     print(f"{NAME}: Yes, {CALLNAME}?")
                     set_mode("TALK")
                     tts.speak(f"Yes, {CALLNAME}?")
                     set_mode("LISTEN")
+
                 else:
                     set_mode("SLEEP")
-                continue
 
+                continue
+                
             if "sleep" in user_input.lower() or "be quiet" in user_input.lower():
                 assistant_awake = False
+
                 print(f"{NAME}: Going to sleep, {CALLNAME}.")
                 set_mode("TALK")
                 tts.speak(f"Going to sleep {CALLNAME}.")
                 set_mode("SLEEP")
+
                 continue
 
             print("You said:", user_input)
@@ -392,9 +371,11 @@ def main():
             if user_input.lower() in ["goodbye", "goodbye.", "bye", "bye.", "exit", "exit."]:
                 reply = f"Goodbye {CALLNAME}!"
                 print(f"{NAME}: {reply}")
+
                 set_mode("TALK")
                 tts.speak(reply)
                 set_mode("OFF")
+
                 sys.exit(0)
 
             if not user_input:
@@ -413,11 +394,13 @@ def main():
 
                 if reply is None:
                     reply = tell_time(user_input)
-
+                    
                 if reply is None:
                     match = re.search(r"open (.+)", user_input.lower())
+
                     if match:
                         app = match.group(1).strip().rstrip(".!?")
+
                         send_laptop_command(f"open {app}")
                         reply = f"Opening {app} on your laptop, {CALLNAME}"
 
@@ -425,17 +408,13 @@ def main():
                     set_mode("THINK")
                     reply = ask_ai(user_input)
 
+
                 set_mode("TALK")
                 tts.speak(reply)
 
-                # --- NEW: after speaking, if interrupted, go back to LISTEN ---
-                if was_interrupted:
-                    was_interrupted = False
-                    set_mode("LISTEN")
-                    print(f"[Listening again after interrupt]")
-                else:
-                    set_mode("IDLE")
+                set_mode("IDLE")
 
+        
 
 try:
     main()
