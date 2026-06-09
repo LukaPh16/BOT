@@ -17,33 +17,35 @@ def start_face_detection():
     while True:
         ret, frame = cap.read()
 
-        if not ret:
-            break
 
-        # convert to grayscale
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        small = cv2.resize(frame, None, fx=0.5, fy=0.5)
+        gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
 
-        # multiple faces
         faces = face_cascade.detectMultiScale(
             gray,
             scaleFactor=1.1,
             minNeighbors=5,
-            minSize=(30, 30)
+            minSize=(30,30)
         )
 
         for (x, y, w, h) in faces:
-            cv2.rectangle(
-                frame,
-                (x, y),
-                (x + w, y + h),
-                (0, 255, 0),
-                2
-            )
+            x *= 2
+            y *= 2
+            w *= 2
+            h *= 2
+
+            cv2.rectangle(frame,
+                          (x, y),
+                          (x+w, y+h),
+                          (0,255,0), 2)
 
         cv2.imshow("face detection", frame)
 
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
+
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
     cap.release()
     cv2.destroyAllWindows()

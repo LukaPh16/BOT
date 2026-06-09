@@ -57,7 +57,27 @@ RATE = 48000 #mic
 TARGET_RATE = 16000
 CHUNK_SIZE = 1024
 
-DEVICE_INDEX = 5 #mic / 4 / 24
+
+def find_mic():
+    p = pyaudio.PyAudio()
+
+    target = "USB Composite Device: Audio"
+
+    for i in range(p.get_device_count()):
+        info = p.get_device_info_by_index(i)
+
+        if info["maxInputChannels"] > 0:
+            name = info["name"]
+
+            if target.lower() in name.lower():
+                print(f"Using microphone: {name}")
+                return i
+            
+    raise Exception("USB microphone not found!")
+
+DEVICE_INDEX = find_mic() 
+
+
 MIN_VOLUME = 65 
 SILENCE_THRESHOLD= 60
 SILENCE_LIMIT = 20
@@ -144,6 +164,7 @@ class TTSEngine:
                 global tts_playing
 
                 tts_playing = True
+                
                 sd.play(data, fs)
 
                 while sd.get_stream().active:
@@ -368,6 +389,14 @@ def main():
 
             print("You said:", user_input)
 
+            if not user_input:
+                set_mode("IDLE")
+                continue
+
+            if user_input.lower() in ["camera", "camera."]:
+                start_face_detection()
+                continue
+
             if user_input.lower() in ["goodbye", "goodbye.", "bye", "bye.", "exit", "exit."]:
                 reply = f"Goodbye {CALLNAME}!"
                 print(f"{NAME}: {reply}")
@@ -377,14 +406,6 @@ def main():
                 set_mode("OFF")
 
                 sys.exit(0)
-
-            if not user_input:
-                set_mode("IDLE")
-                continue
-
-            if user_input.lower() == "face detection.":
-                start_face_detection()
-                continue
 
             if assistant_awake:
                 reply = remember_fact(user_input)
@@ -413,6 +434,7 @@ def main():
                 tts.speak(reply)
 
                 set_mode("IDLE")
+
 
         
 
