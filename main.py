@@ -51,6 +51,8 @@ NAME = "FRIDAY" #Still have to think about the name
 CALLNAME = "SIR"
 
 WAKEWORD = "friday"
+MODE = "WAKE"
+waiting_for_command = False
 
 
 RATE = 48000 #mic
@@ -82,7 +84,6 @@ MIN_VOLUME = 65
 SILENCE_THRESHOLD= 60
 SILENCE_LIMIT = 20
 
-assistant_awake = False
 tts_stop_event = Event()
 tts_playing = False
 tts_lock = threading.Lock()
@@ -311,7 +312,9 @@ def send_laptop_command(command):
 
 def main():
     global examples
-    global assistant_awake
+    global MODE
+    global waiting_for_command
+
     set_mode("SLEEP")
 
     while True:
@@ -321,11 +324,7 @@ def main():
         print(f"Volume: {db:6.2f} dB   ", end="\r", flush=True)
         
         if db > MIN_VOLUME:
-            if assistant_awake == True:
-                set_mode("LISTEN")
-
-            else:
-                set_mode("SLEEP")
+            set_mode("LISTEN")
             print("\nSpeaking detected...")
 
             frames = []
@@ -345,13 +344,8 @@ def main():
                 if silence_count > SILENCE_LIMIT:
                     break
 
+            set_mode("THINK")
             print("Processing...")
-
-            if assistant_awake == True:
-                set_mode("THINK")
-
-            else:
-                set_mode("SLEEP")
 
             audio_data = b"".join(frames)
 
@@ -363,38 +357,64 @@ def main():
             result = model.transcribe(audio_np, language="en")
             user_input = result["text"].strip()
 
-            if not assistant_awake:
-                if WAKEWORD in user_input.lower():
-                    assistant_awake = True
+            if "be quiet" in user_input.lower():
+                MODE = "WAKE"
+                waiting_for_command = False
 
-                    print(f"{NAME}: Yes, {CALLNAME}?")
-                    set_mode("TALK")
-                    tts.speak(f"Yes, {CALLNAME}?")
-                    set_mode("LISTEN")
+                set_mode("TALK")
+                tts.speak(f"Quiet mode enabled, {CALLNAME}.")
+                set_mode("SLEEP")
+                continue
+
+            if "always listen" in user_input.lower():
+                MODE = "ALWAYS"
+                set_mode("TALK")
+                tts.speak(f"Always listening mode enabled, {CALLNAME}.")
+                set_mode("IDLE")
+                continue
+
+            user_input = user_input.lower()
+
+            if MODE == "WAKE":
+                user_input = re.sub(r"[.!?,]", "", user_input).strip()
+
+                if waiting_for_command:
+                    waiting_for_command = False
 
                 else:
-                    set_mode("SLEEP")
+                    if user_input == WAKEWORD:
+                        set_mode("TALK")
+                        tts.speak(f"Yes, {CALLNAME}?")
+                        set_mode("LISTEN")
 
-                continue
+                        waiting_for_command = True
+                        continue
                 
-            if "sleep" in user_input.lower() or "be quiet" in user_input.lower():
-                assistant_awake = False
+                    elif user_input.startswith(WAKEWORD):
+                        user_input = user_input.replace(WAKEWORD, "", 1).strip()
 
-                print(f"{NAME}: Going to sleep, {CALLNAME}.")
-                set_mode("TALK")
-                tts.speak(f"Going to sleep {CALLNAME}.")
-                set_mode("SLEEP")
+                        if not user_input:
+                            continue
 
-                continue
+                    else:
+                        set_mode("SLEEP")
+                        continue
 
             print("You said:", user_input)
 
             if not user_input:
-                set_mode("IDLE")
+                if MODE == "WAKE":
+                    set_mode("SLEEP")
+
+                else:
+                    set_mode("IDLE")
+
                 continue
 
             if user_input.lower() in ["camera", "camera."]:
+                set_mode("THINK")
                 start_face_detection()
+                set_mode("IDLE")
                 continue
 
             if user_input.lower() in ["goodbye", "goodbye.", "bye", "bye.", "exit", "exit."]:
@@ -407,7 +427,7 @@ def main():
 
                 sys.exit(0)
 
-            if assistant_awake:
+            if MODE in ["WAKE", "ALWAYS"]:
                 reply = remember_fact(user_input)
 
                 if reply is None:
@@ -433,7 +453,11 @@ def main():
                 set_mode("TALK")
                 tts.speak(reply)
 
-                set_mode("IDLE")
+                if MODE == "WAKE":
+                    set_mode ("SLEEP")
+
+                else:
+                    set_mode("IDLE")
 
 
         
