@@ -1,46 +1,79 @@
-# import ollama
+import cv2
+import time
 
-# response = ollama.chat(model = "qwen2.5:0.5b", messages=[
-#     {
-#         'role': 'user',
-#         'content': ""
-#     }
-# ])
+face_count = 0
 
-# print(response['message']['content'])
+def start_face_detection():
+    global face_count
 
-# import cv2
+    face_cascade = cv2.CascadeClassifier(
+        cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
+    )
 
-# cap = cv2.VideoCapture(1, cv2.CAP_V4L2)
+    cap = cv2.VideoCapture(1)
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
-# print("Opened", cap.isOpened())
 
-# ret, frame = cap.read()
+    if not cap.isOpened():
+        print("Error: Could not open camera")
+        return
 
-# print("frame", ret)
+    while True:
+        ret, frame = cap.read()
 
-# import pyaudio
+        if not ret:
+            continue
 
-# p = pyaudio.PyAudio()
 
-# print("Available audio devices:")
+        small = cv2.resize(frame, None, fx=0.25, fy=0.25)
+        gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
 
-# for i in range(p.get_device_count()):
-#     info = p.get_device_info_by_index(i)
-#     print(
-#         i,
-#         "|",
-#         info["name"],
-#         "| inputs:",
-#         info["maxInputChannels"]
-#     )
+        faces = face_cascade.detectMultiScale(
+            gray,
+            scaleFactor=1.1,
+            minNeighbors=5,
+            minSize=(30,30)
+        )
 
-import pyaudio
+        faces = faces[:3]
+        face_count = len(faces)
 
-p = pyaudio.PyAudio()
+        for (x, y, w, h) in faces:
+            x *= 4
+            y *= 4
+            w *= 4
+            h *= 4
 
-for i in range(p.get_device_count()):
-    info = p.get_device_info_by_index(i)
+            cv2.rectangle(frame,
+                          (x, y),
+                          (x+w, y+h),
+                          (0,255,0), 2)
 
-    if info["maxInputChannels"] > 0:
-        print(i, info["name"])
+        cv2.putText(
+            frame,
+            f"Faces: {face_count}",
+            (10, 30),
+            cv2.FONT_HERSHEY_COMPLEX,
+            1,
+            (0, 255, 0),
+            2
+        )
+
+        cv2.imshow("face detection", frame)
+
+        if cv2.waitKey(1) == 27:
+            break
+
+        time.sleep(0.01)
+
+    cap.release()
+    cv2.destroyAllWindows()
+
+def get_face_count():
+    return face_count
+
+if __name__ == "__main__":
+    start_face_detection()

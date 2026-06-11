@@ -1,74 +1,69 @@
 import cv2
+import mediapipe as mp
 
 face_count = 0
+
+mp_face_detection = mp.solutions.face_detection
+mp_drawing = mp.solutions.drawing_utils
+
 
 def start_face_detection():
     global face_count
 
-    face_cascade = cv2.CascadeClassifier(
-        cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
-    )
-
     cap = cv2.VideoCapture(1)
-    
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
     if not cap.isOpened():
         print("Error: Could not open camera")
         return
 
-    while True:
-        ret, frame = cap.read()
+    with mp_face_detection.FaceDetection(
+            model_selection=0,
+            min_detection_confidence=0.5) as face_detection:
 
-        if not ret:
-            continue
+        while True:
+            ret, frame = cap.read()
 
+            if not ret:
+                continue
 
-        small = cv2.resize(frame, None, fx=0.5, fy=0.5)
-        gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+            # BGR → RGB
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-        faces = face_cascade.detectMultiScale(
-            gray,
-            scaleFactor=1.1,
-            minNeighbors=5,
-            minSize=(30,30)
-        )
+            results = face_detection.process(rgb)
 
-        face_count = len(faces)
+            face_count = 0
 
-        for (x, y, w, h) in faces:
-            x *= 2
-            y *= 2
-            w *= 2
-            h *= 2
+            if results.detections:
+                face_count = len(results.detections)
 
-            cv2.rectangle(frame,
-                          (x, y),
-                          (x+w, y+h),
-                          (0,255,0), 2)
+                for detection in results.detections:
+                    mp_drawing.draw_detection(frame, detection)
 
-        cv2.putText(
-            frame,
-            f"Faces: {face_count}",
-            (10, 30),
-            cv2.FONT_HERSHEY_COMPLEX,
-            1,
-            (0, 255, 0),
-            2
-        )
+            cv2.putText(
+                frame,
+                f"Faces: {face_count}",
+                (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1,
+                (0, 255, 0),
+                2
+            )
 
-        cv2.imshow("face detection", frame)
+            cv2.imshow("FRIDAY Vision", frame)
 
-        if cv2.waitKey(1) == 27:
-            break
+            if cv2.waitKey(1) == 27:  # ESC
+                break
 
     cap.release()
     cv2.destroyAllWindows()
 
+
 def get_face_count():
     return face_count
+
 
 if __name__ == "__main__":
     start_face_detection()
