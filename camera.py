@@ -1,21 +1,29 @@
 import cv2
 
+face_count = 0
+
 def start_face_detection():
-    # start face detection model
+    global face_count
+
     face_cascade = cv2.CascadeClassifier(
         cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
     )
 
     cap = cv2.VideoCapture(1)
+    
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+
 
     if not cap.isOpened():
         print("Error: Could not open camera")
         return
-    
-    print("Started Face Detection. Press Q to Quit")
 
     while True:
         ret, frame = cap.read()
+
+        if not ret:
+            continue
 
 
         small = cv2.resize(frame, None, fx=0.5, fy=0.5)
@@ -28,6 +36,8 @@ def start_face_detection():
             minSize=(30,30)
         )
 
+        face_count = len(faces)
+
         for (x, y, w, h) in faces:
             x *= 2
             y *= 2
@@ -39,16 +49,26 @@ def start_face_detection():
                           (x+w, y+h),
                           (0,255,0), 2)
 
+        cv2.putText(
+            frame,
+            f"Faces: {face_count}",
+            (10, 30),
+            cv2.FONT_HERSHEY_COMPLEX,
+            1,
+            (0, 255, 0),
+            2
+        )
+
         cv2.imshow("face detection", frame)
 
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+        if cv2.waitKey(1) == 27:
             break
-
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
     cap.release()
     cv2.destroyAllWindows()
+
+def get_face_count():
+    return face_count
 
 if __name__ == "__main__":
     start_face_detection()

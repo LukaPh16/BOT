@@ -26,7 +26,7 @@ import os
 
 import requests
 
-from camera import start_face_detection
+from camera import start_face_detection, get_face_count
 
 LAPTOP_IP = "10.247.248.44"
 
@@ -53,6 +53,9 @@ CALLNAME = "SIR"
 WAKEWORD = "friday"
 MODE = "WAKE"
 waiting_for_command = False
+
+camera_mode = False
+camera_thread = None
 
 
 RATE = 48000 #mic
@@ -314,6 +317,14 @@ def main():
     global examples
     global MODE
     global waiting_for_command
+    global camera_mode
+    global camera_thread
+
+    camera_thread = Thread(
+        target=start_face_detection,
+        daemon=True
+    )
+    camera_thread.start()
 
     set_mode("SLEEP")
 
@@ -357,23 +368,23 @@ def main():
             result = model.transcribe(audio_np, language="en")
             user_input = result["text"].strip()
 
-            if "be quiet" in user_input.lower():
+            user_input = user_input.lower()
+
+            if "be quiet" in user_input:
                 MODE = "WAKE"
                 waiting_for_command = False
 
                 set_mode("TALK")
                 tts.speak(f"Quiet mode enabled, {CALLNAME}.")
                 set_mode("SLEEP")
-                continue
+                continue 
 
-            if "always listen" in user_input.lower():
+            if "always listen" in user_input:
                 MODE = "ALWAYS"
                 set_mode("TALK")
                 tts.speak(f"Always listening mode enabled, {CALLNAME}.")
                 set_mode("IDLE")
                 continue
-
-            user_input = user_input.lower()
 
             if MODE == "WAKE":
                 user_input = re.sub(r"[.!?,]", "", user_input).strip()
@@ -411,12 +422,6 @@ def main():
 
                 continue
 
-            if user_input.lower() in ["camera", "camera."]:
-                set_mode("THINK")
-                start_face_detection()
-                set_mode("IDLE")
-                continue
-
             if user_input.lower() in ["goodbye", "goodbye.", "bye", "bye.", "exit", "exit."]:
                 reply = f"Goodbye {CALLNAME}!"
                 print(f"{NAME}: {reply}")
@@ -435,6 +440,17 @@ def main():
 
                 if reply is None:
                     reply = tell_time(user_input)
+
+                if reply is None:
+                    if "how many people do you see" in user_input:
+                        count = get_face_count()
+
+                        if count == 1:
+                            reply = f"I currently detect {count} face, {CALLNAME}."
+                        
+                        else:
+                            reply = f"I currently detect {count} faces, {CALLNAME}."
+
                     
                 if reply is None:
                     match = re.search(r"open (.+)", user_input.lower())
