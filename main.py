@@ -373,6 +373,8 @@ def main():
             if "be quiet" in user_input:
                 MODE = "WAKE"
                 waiting_for_command = False
+                
+                print(f"Quiet mode enabled, {CALLNAME}.")
 
                 set_mode("TALK")
                 tts.speak(f"Quiet mode enabled, {CALLNAME}.")
@@ -381,6 +383,9 @@ def main():
 
             if "always listen" in user_input:
                 MODE = "ALWAYS"
+
+                print(f"Always listening mode enabled, {CALLNAME}.")
+                
                 set_mode("TALK")
                 tts.speak(f"Always listening mode enabled, {CALLNAME}.")
                 set_mode("IDLE")
@@ -394,6 +399,8 @@ def main():
 
                 else:
                     if user_input == WAKEWORD:
+                        print(f"Yes, {CALLNAME}?")
+
                         set_mode("TALK")
                         tts.speak(f"Yes, {CALLNAME}?")
                         set_mode("LISTEN")
@@ -447,9 +454,11 @@ def main():
 
                         if count == 1:
                             reply = f"I currently detect {count} face, {CALLNAME}."
+                            print(reply)
                         
                         else:
                             reply = f"I currently detect {count} faces, {CALLNAME}."
+                            print(reply)
 
                     
                 if reply is None:
@@ -460,6 +469,7 @@ def main():
 
                         send_laptop_command(f"open {app}")
                         reply = f"Opening {app} on your laptop, {CALLNAME}"
+                        print(reply)
 
                 if reply is None:
                     set_mode("THINK")
